@@ -205,7 +205,7 @@ static int qsk_counter = 0;
       SendingSequence = true;
 
     if(SendingSequence == true){
-      SendSequence("CQ CQ CQ De EI8KI EI8KI EI8KI PSE K");
+      SendSequence("CQ CQ CQ De TEST TEST TEST PSE K");
       for(int i=0;i<5000;i++)
         {
         if(digitalRead(SW_3_PIN) == true)
