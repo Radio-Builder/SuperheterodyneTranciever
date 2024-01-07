@@ -1,4 +1,4 @@
-// RadioLab Superheterodyne Radio Sketch
+// RadioLab Superheterodyne CW Tranciever Radio Sketch
 
 #include <TFT_eSPI.h> // Graphics and font library for ST7735 driver chip
 #include <SPI.h>
@@ -7,155 +7,12 @@
 #include "si5351.h"
 #include "Wire.h"
 
+#define TX_RX_Pin 1
+#define TX_EN_Pin 3
 
-void cw_transmit( void * pvParameters );
+void manage_encoder( void * pvParameters );
 
-String convertCharacterToMorseCode(char c) {
-  String code;
-  
-  switch(c) {
-    case 'a':
-    case 'A':
-      code = ".-";
-      break;
-    case 'b':
-    case 'B':
-      code = "-...";
-      break;
-    case 'c':
-    case 'C':
-      code = "-.-.";
-      break;
-    case 'd':
-    case 'D':
-      code = "-..";
-      break;
-    case 'e':
-    case 'E':
-      code = ".";
-      break;
-    case 'f':
-    case 'F':
-      code = "..-.";
-      break;
-    case 'g':
-    case 'G':
-      code = "--.";
-      break;
-    case 'h':
-    case 'H':
-      code = "....";
-      break;
-    case 'i':
-    case 'I':
-      code = "..";
-      break;
-    case 'j':
-    case 'J':
-      code = ".---";
-      break;
-    case 'k':
-    case 'K':
-      code = "-.-";
-      break;
-    case 'l':
-    case 'L':
-      code = ".-..";
-      break;
-    case 'm':
-    case 'M':
-      code = "--";
-      break;
-    case 'n':
-    case 'N':
-      code = "-.";
-      break;
-    case 'o':
-    case 'O':
-      code = "---";
-      break;
-    case 'p':
-    case 'P':
-      code = ".--.";
-      break;
-    case 'q':
-    case 'Q':
-      code = "--.-";
-      break;
-    case 'r':
-    case 'R':
-      code = ".-.";
-      break;
-    case 's':
-    case 'S':
-      code = "...";
-      break;
-    case 't':
-    case 'T':
-      code = "-";
-      break;
-    case 'u':
-    case 'U':
-      code = "..-";
-      break;
-    case 'v':
-    case 'V':
-      code = "...-";
-      break;
-    case 'w':
-    case 'W':
-      code = ".--";
-      break;
-    case 'x':
-    case 'X':
-      code = "-..-";
-      break;
-    case 'y':
-    case 'Y':
-      code = "-.--";
-      break;
-    case 'z':
-    case 'Z':
-      code = "--..";
-      break;
-    case '1':
-      code = ".----";
-      break;
-    case '2':
-      code = "..---";
-      break;
-    case '3':
-      code = "...--";
-      break;
-    case '4':
-      code = "....-";
-      break;
-    case '5':
-      code = ".....";
-      break;
-    case '6':
-      code = "-....";
-      break;
-    case '7':
-      code = "--...";
-      break;
-    case '8':
-      code = "---..";
-      break;
-    case '9':
-      code = "----.";
-      break;
-    case '0':
-      code = "-----";
-      break;
-    case ' ':
-      code = "    ";
-    default:
-      code = "";
-      break;
-  }
-  return code;
-}
+
 
 //------------------------------- TFT Display Init ------------------------------//
 TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
@@ -185,14 +42,12 @@ void setupEncoder(void)
   //we must initialize rotary encoder
 	rotaryEncoder.begin();
 	rotaryEncoder.setup(readEncoderISR);
-	rotaryEncoder.setAcceleration(250); //or set the value - larger number = more accelearation; 0 or 1 means disabled acceleration
+	rotaryEncoder.setAcceleration(0); //or set the value - larger number = more accelearation; 0 or 1 means disabled acceleration
 }
 
 //------------------------------- Si5351 Init ------------------------------//
 Si5351 si5351(0x60);
-#define IF_FILTER_PEAK (4914727-800)
-//#define IF_FILTER_PEAK (4915151)
-
+#define IF_FILTER_PEAK (4915151)
 //#define IF_FILTER_PEAK (9216283)
 
 
@@ -253,11 +108,9 @@ void updateTFT()
 #define SW_4_PIN 19
 #define SW_3_PIN 16
 #define SW_2_PIN 4
-//#define SW_ENCODER_PIN 32
 
 
-#define TX_RX_Pin 1
-#define TX_EN_Pin 3
+
 
 TaskHandle_t Task1;
 
@@ -287,32 +140,19 @@ void setup()
 
   pinMode(TX_RX_Pin, OUTPUT);
   pinMode(TX_EN_Pin, OUTPUT);
-  pinMode(12, OUTPUT);
-  pinMode(27, OUTPUT);
-  digitalWrite(27,0);
-  digitalWrite(12,1);
+
 
   digitalWrite(TX_RX_Pin,1);
   digitalWrite(TX_EN_Pin,0);
 
-
-  int ledPin = 33;
-  int freq = 600;
-  int ledChannel = 0;
-  int resolution = 8;
-
-  ledcSetup(ledChannel, freq, resolution);  
-  ledcAttachPin(ledPin, ledChannel);
-  ledcWrite(ledChannel, 127);
-
   pinMode(SW_2_PIN,INPUT);
   pinMode(SW_3_PIN,INPUT);
+  pinMode(SW_4_PIN,INPUT);
 
-  //SendSequence("CQ CQ CQ De EI8KI EI8KI EI8KI K");
 
   xTaskCreatePinnedToCore(
-      cw_transmit, /* Function to implement the task */
-      "cw_transmit", /* Name of the task */
+      manage_encoder, /* Function to implement the task */
+      "manage_encoder", /* Name of the task */
       10000,  /* Stack size in words */
       NULL,  /* Task input parameter */
       0,  /* Priority of the task */
@@ -320,122 +160,21 @@ void setup()
       0); /* Core where the task should run */
 }
 
-#define DOT_TIME 100
 
+#include "cw.h"
 
-void  SendDot(void)
-{
-  digitalWrite(27,1);
-  digitalWrite(TX_RX_Pin,0); 
-  digitalWrite(TX_EN_Pin,1); 
-  delay(DOT_TIME);
-
-}
-
-void SendDash(void)
-{
-  SendDot();
-  SendDot();
-  SendDot();
-}
-
-void SendSpace(int numberSpaces)
-{
-  // digitalWrite(12,0);  // Mute Audio
-  // delay(5);
-  digitalWrite(27,0);
-  digitalWrite(TX_RX_Pin,1);
-  digitalWrite(TX_EN_Pin,0);
-  delay(DOT_TIME*numberSpaces);
-  // digitalWrite(12,1);  // Mute Audio
-  // delay(5);
-
-}
-
-void SendSequence(String sequence)
-{
-  si5351.set_freq(0, SI5351_CLK1);
-  si5351.set_freq((clk_1_frequency-800-IF_FILTER_PEAK)*100, SI5351_CLK2);  
-
-  for(unsigned int i=0;i<sequence.length();i++)
-  {
-
-    if(digitalRead(SW_3_PIN) == true){
-      SendSpace(1);
-
-      digitalWrite(12,0);  // Mute Audio
-      delay(5);
-      si5351.set_freq(clk_2_frequency*100, SI5351_CLK1);
-      si5351.set_freq(0, SI5351_CLK2);  
-      delay(5);
-      digitalWrite(12,1);
-      return;
-      }
-
-    String str = convertCharacterToMorseCode(sequence[i]);
-
-    for(unsigned int j=0;j<str.length();j++)
-      {
-      char c = str.charAt(j);
-
-      if(c == '.'){
-        SendDot();
-        SendSpace(1);
-        }
-      if(c == '-' ){
-        SendDash();
-        SendSpace(1);
-        }
-      if(c == ' ' )
-        SendSpace(1);
-    }
-    SendSpace(3);
-  }
-
-
-
-  
-
-  
-
-  digitalWrite(12,0);  // Mute Audio
-  delay(5);
-  si5351.set_freq(clk_2_frequency*100, SI5351_CLK1);
-  si5351.set_freq(0, SI5351_CLK2);  
-  delay(5);
-  digitalWrite(12,1);
-
-}
-
-
-float value = 0.0f;
-int sign = 1;
 
 #define IDLE      0
-#define RAMP_UP   1
-#define STEADY    2
-#define RAMP_DOWN 3
-#define QSK       4
-
-int state = IDLE;
-float amplitude = 0.0f;
-float volume = 0.5;
-int debounce = 0;
-int qsk_counter = 0;
-
-#define RAMP_VALUE    0.005
-#define MAX_VALUE     2*3.14
-#define SMAPLE_SIZE   0.20;
-#define DEBOUNCE_TIME 000
 #define QSK_TIME      500
+//int qsk_counter = 0;
 
 void loop() {
 static int idle = true;
+static int qsk_counter = 0;
 
   bool KeyDown = digitalRead(SW_4_PIN);
   if(KeyDown == 1){
-    digitalWrite(27,1);
-    si5351.set_freq(0, SI5351_CLK1);
+    si5351.set_freq((clk_1_frequency-200-IF_FILTER_PEAK)*100, SI5351_CLK1);
     si5351.set_freq((clk_1_frequency-800-IF_FILTER_PEAK)*100, SI5351_CLK2);  
     digitalWrite(TX_RX_Pin,0); 
     digitalWrite(TX_EN_Pin,1); 
@@ -444,21 +183,14 @@ static int idle = true;
     }
   else if(idle==false)
     {
-    digitalWrite(27,0);
-    digitalWrite(TX_RX_Pin,1);
     digitalWrite(TX_EN_Pin,0);
+    digitalWrite(TX_RX_Pin,1);
     qsk_counter++;
       if(qsk_counter >= QSK_TIME){
-        digitalWrite(12,0);  // Mute Audio
-        delay(5);
         si5351.set_freq(clk_2_frequency*100, SI5351_CLK1);
-        //si5351.set_freq(clk_1_frequency*100, SI5351_CLK0);
         qsk_counter=0;
         si5351.set_freq(0, SI5351_CLK2);  
         idle = true;  
-        delay(5);
-        digitalWrite(12,1);
-
       }
 
     }
@@ -483,13 +215,7 @@ static int idle = true;
       }
 }
 
-  
-
-
-
-
-
-void cw_transmit( void * pvParameters ){
+void manage_encoder( void * pvParameters ){
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
   pinMode(SW_4_PIN, INPUT);
@@ -516,7 +242,6 @@ void cw_transmit( void * pvParameters ){
 
       
     }
-
 
     if (rotaryEncoder.isEncoderButtonClicked(1))
     {
